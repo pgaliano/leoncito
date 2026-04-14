@@ -234,13 +234,12 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
 
   const handleClick = useCallback(() => {
     if (state === "idle") startRecording();
-    else if (state === "recording") stopRecording();
     else if (state === "speaking") {
       audioRef.current?.pause();
       stopMonitoring();
       updateState("idle");
     }
-  }, [state, startRecording, stopRecording, stopMonitoring, updateState]);
+  }, [state, startRecording, stopMonitoring, updateState]);
 
   const ringClass: Record<VoiceState, string> = {
     idle: "",
@@ -271,11 +270,10 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
           <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" />
         </svg>
       );
-    // speaking
+    // speaking — stop square
     return (
       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-        <rect x="6" y="4" width="4" height="16" rx="1" />
-        <rect x="14" y="4" width="4" height="16" rx="1" />
+        <rect x="5" y="5" width="14" height="14" rx="2" />
       </svg>
     );
   };
@@ -295,7 +293,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
 
       <button
         onClick={handleClick}
-        disabled={!started || state === "processing"}
+        disabled={!started || state === "processing" || state === "recording"}
         className={`
           fixed bottom-8 left-1/2 -translate-x-1/2 z-50
           w-16 h-16 rounded-full
@@ -305,17 +303,14 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
           flex items-center justify-center
           transition-all duration-300
           hover:bg-purple-800/70 hover:scale-110
-          disabled:opacity-60 disabled:cursor-wait
+          disabled:opacity-60 disabled:cursor-not-allowed
           ${ringClass[state]}
         `}
         title={
-          state === "idle"
-            ? "Click to record"
-            : state === "recording"
-              ? "Click to stop"
-              : state === "processing"
-                ? "Processing…"
-                : "Click to stop playback"
+          state === "idle"       ? "Tap to speak"
+          : state === "recording"  ? "Listening…"
+          : state === "processing" ? "Processing…"
+          : "Stop"
         }
       >
         {icon(state)}
