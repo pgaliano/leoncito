@@ -1,26 +1,7 @@
-"use client";
-
-import { useState, useCallback } from "react";
-import SphereScene from "@/components/SphereScene";
-import RecordButton, { type VoiceState } from "@/components/RecordButton";
+import { generateToken } from "@/lib/token";
+import HomeClient from "@/components/HomeClient";
 
 export default function Home() {
-  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
-  const [audioLevel, setAudioLevel] = useState(0);
-
-  const handleStateChange = useCallback((s: VoiceState) => setVoiceState(s), []);
-  const handleAudioLevel = useCallback((l: number) => setAudioLevel(l), []);
-
-  return (
-    <>
-      <SphereScene
-        isSpeaking={voiceState === "speaking"}
-        audioLevel={audioLevel}
-      />
-      <RecordButton
-        onStateChange={handleStateChange}
-        onAudioLevel={handleAudioLevel}
-      />
-    </>
-  );
+  const token = generateToken();
+  return <HomeClient token={token} />;
 }

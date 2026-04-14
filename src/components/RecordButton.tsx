@@ -14,12 +14,13 @@ export interface Turn {
 }
 
 interface RecordButtonProps {
+  token: string;
   onStateChange: (state: VoiceState) => void;
   onAudioLevel: (level: number) => void;
   onTurn?: (turn: Turn) => void;
 }
 
-export default function RecordButton({ onStateChange, onAudioLevel, onTurn }: RecordButtonProps) {
+export default function RecordButton({ token, onStateChange, onAudioLevel, onTurn }: RecordButtonProps) {
   const [state, setState] = useState<VoiceState>("idle");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -97,7 +98,11 @@ export default function RecordButton({ onStateChange, onAudioLevel, onTurn }: Re
           const form = new FormData();
           form.append("audio", blob, "recording.webm");
 
-          const resp = await fetch("/api/conversation", { method: "POST", body: form });
+          const resp = await fetch("/api/conversation", {
+            method: "POST",
+            headers: { "x-request-token": token },
+            body: form,
+          });
           if (!resp.ok) {
             let detail = `API error: ${resp.status}`;
             try {

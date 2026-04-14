@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { validateToken } from "@/lib/token";
 
 export const maxDuration = 60; // requires Vercel Pro; remove if on Hobby
 
@@ -78,6 +79,27 @@ async function tts(text: string): Promise<ArrayBuffer> {
 }
 
 export async function POST(request: NextRequest) {
+  // Bot protection: validate origin + HMAC page token
+  const origin   = request.headers.get("origin")   ?? "";
+  const referer  = request.headers.get("referer")  ?? "";
+  const token    = request.headers.get("x-request-token") ?? "";
+
+  const isDev = process.env.NODE_ENV === "development";
+  const appDomain = process.env.NEXT_PUBLIC_APP_URL || "el-leoncito.vercel.app";
+
+  const originOk = isDev
+    ? origin.includes("localhost") || referer.includes("localhost") || origin === "" || referer === ""
+    : origin.includes(appDomain) || referer.includes(appDomain);
+
+  if (!originOk) {
+    return Response.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
+  // Skip token check in dev; in prod require a valid HMAC page token
+  if (!isDev && !validateToken(token)) {
+    return Response.json({ detail: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const form = await request.formData();
     const audio = form.get("audio") as File | null;
