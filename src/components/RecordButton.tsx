@@ -4,9 +4,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 export type VoiceState = "idle" | "recording" | "processing" | "speaking";
 
-const SILENCE_THRESHOLD = 8;   // avg amplitude (0–255) below which = silence
-const SILENCE_DURATION = 1500; // ms of continuous silence before auto-stop
-const MIN_RECORDING_MS = 500;  // don't auto-stop within the first 500ms
+const SILENCE_THRESHOLD = 22;  // avg amplitude (0–255) below which = silence; ambient noise ~5-15, speech ~30+
+const VOICE_FRAMES_REQUIRED = 4; // consecutive 100ms frames above threshold before marking "has voice"
+const SILENCE_DURATION = 1800; // ms of continuous silence before auto-stop
+const MIN_RECORDING_MS = 800;  // don't auto-stop within the first 800ms
 
 export interface Turn {
   user: string;
@@ -31,6 +32,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   const silenceCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const silenceStartRef = useRef<number | null>(null);
   const hasVoiceRef = useRef(false);
+  const voiceFramesRef = useRef(0);
 
   const updateState = useCallback(
     (s: VoiceState) => {
@@ -76,6 +78,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
       streamRef.current = stream;
       chunksRef.current = [];
       hasVoiceRef.current = false;
+      voiceFramesRef.current = 0;
 
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorderRef.current = recorder;
@@ -174,16 +177,20 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
 
         if (Date.now() - recordingStart < MIN_RECORDING_MS) return;
 
-        if (level < SILENCE_THRESHOLD) {
+        if (level >= SILENCE_THRESHOLD) {
+          voiceFramesRef.current += 1;
+          if (voiceFramesRef.current >= VOICE_FRAMES_REQUIRED) {
+            hasVoiceRef.current = true;
+          }
+          silenceStartRef.current = null;
+        } else {
+          voiceFramesRef.current = 0;
           if (silenceStartRef.current === null) silenceStartRef.current = Date.now();
           else if (Date.now() - silenceStartRef.current >= SILENCE_DURATION) {
             clearInterval(silenceCheckRef.current!);
             silenceCheckRef.current = null;
             recorder.stop();
           }
-        } else {
-          hasVoiceRef.current = true;
-          silenceStartRef.current = null;
         }
       }, 100);
     } catch (err) {
@@ -257,7 +264,8 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   };
 
   const icon = (s: VoiceState) => {
-    if (s === "idle")
+    // Always show mic while greeting is playing
+    if (isGreeting || s === "idle")
       return (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="9" y="1" width="6" height="11" rx="3" />
@@ -267,11 +275,13 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
         </svg>
       );
     if (s === "recording")
+      // Audio-wave bars: clearly "I'm listening / speak now"
       return (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-          {/* mouth / lips */}
-          <path d="M5 10 Q12 17 19 10" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          <path d="M5 10 Q8 13 12 13 Q16 13 19 10" fill="currentColor" opacity="0.6"/>
+          <rect x="3"  y="9"  width="3" height="6"  rx="1.5"/>
+          <rect x="8"  y="5"  width="3" height="14" rx="1.5"/>
+          <rect x="13" y="7"  width="3" height="10" rx="1.5"/>
+          <rect x="18" y="10" width="3" height="4"  rx="1.5"/>
         </svg>
       );
     if (s === "processing")
