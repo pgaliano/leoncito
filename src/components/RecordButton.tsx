@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export type VoiceState = "idle" | "recording" | "processing" | "speaking";
 
@@ -192,6 +192,45 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
   }, []);
+
+  // Play greeting on first mount, then kick off the recording loop
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        updateState("speaking");
+        const resp = await fetch("/api/greeting");
+        if (!resp.ok || cancelled) { updateState("idle"); return; }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+
+        const ctx = new AudioContext();
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(ctx.destination);
+        monitorAudioLevel(source, ctx);
+
+        audio.onended = () => {
+          stopMonitoring();
+          URL.revokeObjectURL(url);
+          ctx.close();
+          if (!cancelled) startRecording();
+        };
+        audio.onerror = () => {
+          stopMonitoring();
+          URL.revokeObjectURL(url);
+          ctx.close();
+          updateState("idle");
+        };
+        await audio.play();
+      } catch {
+        if (!cancelled) updateState("idle");
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // intentionally empty: run once on mount
 
   const handleClick = useCallback(() => {
     if (state === "idle") startRecording();
