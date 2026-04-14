@@ -340,8 +340,11 @@ export default function SphereScene({ isSpeaking = false, audioLevel = 0 }: Sphe
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.classList.add("webgl");
-    renderer.domElement.style.maxWidth = "100%";
-    renderer.domElement.style.height = "auto";
+    renderer.domElement.style.position = "absolute";
+    renderer.domElement.style.top = "0";
+    renderer.domElement.style.left = "0";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
     container.appendChild(renderer.domElement);
 
     // ── Scene & Camera ──
@@ -646,8 +649,9 @@ export default function SphereScene({ isSpeaking = false, audioLevel = 0 }: Sphe
         position: "fixed",
         inset: 0,
         zIndex: 0,
-        maxWidth: "100vw",
-        maxHeight: "100vh",
+        overflow: "hidden",
+        width: "100dvw",
+        height: "100dvh",
       }}
     >
       <canvas

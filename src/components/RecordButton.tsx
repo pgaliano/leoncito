@@ -30,6 +30,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   const streamRef = useRef<MediaStream | null>(null);
   const silenceCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const silenceStartRef = useRef<number | null>(null);
+  const hasVoiceRef = useRef(false); // true once any non-silent audio is detected
 
   const updateState = useCallback(
     (s: VoiceState) => {
@@ -74,6 +75,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
+      hasVoiceRef.current = false;
 
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorderRef.current = recorder;
@@ -87,7 +89,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
         stopMonitoring();
 
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0) {
+        if (blob.size === 0 || !hasVoiceRef.current) {
           updateState("idle");
           return;
         }
