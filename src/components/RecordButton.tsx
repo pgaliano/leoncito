@@ -30,6 +30,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   const streamRef = useRef<MediaStream | null>(null);
   const silenceCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const silenceStartRef = useRef<number | null>(null);
+  const hasVoiceRef = useRef(false);
 
   const updateState = useCallback(
     (s: VoiceState) => {
@@ -74,6 +75,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
+      hasVoiceRef.current = false;
 
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorderRef.current = recorder;
@@ -87,7 +89,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
         stopMonitoring();
 
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0) {
+        if (blob.size === 0 || !hasVoiceRef.current) {
           updateState("idle");
           return;
         }
@@ -180,6 +182,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
             recorder.stop();
           }
         } else {
+          hasVoiceRef.current = true;
           silenceStartRef.current = null;
         }
       }, 100);
@@ -194,14 +197,16 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   }, []);
 
   const [started, setStarted] = useState(false);
+  const [isGreeting, setIsGreeting] = useState(false);
 
   // Play greeting then kick off the recording loop — must be called from a user gesture
   const startSession = useCallback(async () => {
     setStarted(true);
+    setIsGreeting(true);
     try {
       updateState("speaking");
       const resp = await fetch("/api/greeting");
-      if (!resp.ok) { updateState("idle"); return; }
+      if (!resp.ok) { setIsGreeting(false); updateState("idle"); return; }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -218,16 +223,19 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
         stopMonitoring();
         URL.revokeObjectURL(url);
         ctx.close();
+        setIsGreeting(false);
         startRecording();
       };
       audio.onerror = () => {
         stopMonitoring();
         URL.revokeObjectURL(url);
         ctx.close();
+        setIsGreeting(false);
         updateState("idle");
       };
       await audio.play();
     } catch {
+      setIsGreeting(false);
       updateState("idle");
     }
   }, [updateState, monitorAudioLevel, stopMonitoring, startRecording]);
@@ -261,7 +269,9 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
     if (s === "recording")
       return (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="6" y="6" width="12" height="12" rx="2" />
+          {/* mouth / lips */}
+          <path d="M5 10 Q12 17 19 10" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+          <path d="M5 10 Q8 13 12 13 Q16 13 19 10" fill="currentColor" opacity="0.6"/>
         </svg>
       );
     if (s === "processing")
@@ -293,7 +303,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
 
       <button
         onClick={handleClick}
-        disabled={!started || state === "processing" || state === "recording"}
+        disabled={!started || isGreeting || state === "processing" || state === "recording"}
         className={`
           fixed bottom-8 left-1/2 -translate-x-1/2 z-50
           w-16 h-16 rounded-full
