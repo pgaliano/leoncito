@@ -349,8 +349,20 @@ export default function SphereScene({ isSpeaking = false, audioLevel = 0 }: Sphe
 
     // ── Scene & Camera ──
     const scene = new THREE.Scene();
+
+    // Pull the camera back on portrait screens so the sphere never clips horizontally.
+    // Sphere radius is ~4 units; camera vFOV=33°. On narrow aspect ratios the horizontal
+    // FOV shrinks and the sphere clips. We compute the minimum z that keeps it inside.
+    const SPHERE_RADIUS = 4;
+    const V_FOV_RAD = THREE.MathUtils.degToRad(33);
+    const SPHERE_MARGIN = 1.35; // 35% breathing room around the sphere
+    const computeCameraZ = (aspect: number) => {
+      const hFOVHalf = Math.atan(Math.tan(V_FOV_RAD / 2) * aspect);
+      return Math.max(20, (SPHERE_RADIUS * SPHERE_MARGIN) / Math.tan(hFOVHalf));
+    };
+
     const camera = new THREE.PerspectiveCamera(33, w / h, 0.1, 1000);
-    camera.position.set(0, -2, 20);
+    camera.position.set(0, -2, computeCameraZ(w / h));
     camera.lookAt(0, 0, 0);
 
     // ── Background (fullscreen quad via ShaderPass) ──
@@ -545,6 +557,7 @@ export default function SphereScene({ isSpeaking = false, audioLevel = 0 }: Sphe
       const nw = container.clientWidth;
       const nh = container.clientHeight;
       camera.aspect = nw / nh;
+      camera.position.setZ(computeCameraZ(nw / nh));
       camera.updateProjectionMatrix();
       renderer.setSize(nw, nh);
       composer.setSize(nw, nh);
