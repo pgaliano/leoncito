@@ -30,7 +30,6 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   const streamRef = useRef<MediaStream | null>(null);
   const silenceCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const silenceStartRef = useRef<number | null>(null);
-  const hasVoiceRef = useRef(false); // true once any non-silent audio is detected
 
   const updateState = useCallback(
     (s: VoiceState) => {
@@ -75,7 +74,6 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
-      hasVoiceRef.current = false;
 
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorderRef.current = recorder;
@@ -89,7 +87,7 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
         stopMonitoring();
 
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0 || !hasVoiceRef.current) {
+        if (blob.size === 0) {
           updateState("idle");
           return;
         }
@@ -195,44 +193,44 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
     mediaRecorderRef.current?.stop();
   }, []);
 
-  // Play greeting on first mount, then kick off the recording loop
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        updateState("speaking");
-        const resp = await fetch("/api/greeting");
-        if (!resp.ok || cancelled) { updateState("idle"); return; }
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
+  const [started, setStarted] = useState(false);
 
-        const ctx = new AudioContext();
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(ctx.destination);
-        monitorAudioLevel(source, ctx);
+  // Play greeting then kick off the recording loop — must be called from a user gesture
+  const startSession = useCallback(async () => {
+    setStarted(true);
+    try {
+      updateState("speaking");
+      const resp = await fetch("/api/greeting");
+      if (!resp.ok) { updateState("idle"); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
 
-        audio.onended = () => {
-          stopMonitoring();
-          URL.revokeObjectURL(url);
-          ctx.close();
-          if (!cancelled) startRecording();
-        };
-        audio.onerror = () => {
-          stopMonitoring();
-          URL.revokeObjectURL(url);
-          ctx.close();
-          updateState("idle");
-        };
-        await audio.play();
-      } catch {
-        if (!cancelled) updateState("idle");
-      }
-    })();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);  // intentionally empty: run once on mount
+      // AudioContext must be created / resumed inside a user-gesture call stack
+      const ctx = new AudioContext();
+      await ctx.resume();
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(ctx.destination);
+      monitorAudioLevel(source, ctx);
+
+      audio.onended = () => {
+        stopMonitoring();
+        URL.revokeObjectURL(url);
+        ctx.close();
+        startRecording();
+      };
+      audio.onerror = () => {
+        stopMonitoring();
+        URL.revokeObjectURL(url);
+        ctx.close();
+        updateState("idle");
+      };
+      await audio.play();
+    } catch {
+      updateState("idle");
+    }
+  }, [updateState, monitorAudioLevel, stopMonitoring, startRecording]);
 
   const handleClick = useCallback(() => {
     if (state === "idle") startRecording();
@@ -283,32 +281,45 @@ export default function RecordButton({ token, onStateChange, onAudioLevel, onTur
   };
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={state === "processing"}
-      className={`
-        fixed bottom-8 left-1/2 -translate-x-1/2 z-50
-        w-16 h-16 rounded-full
-        bg-purple-900/60 backdrop-blur-md
-        border border-purple-500/30
-        text-white
-        flex items-center justify-center
-        transition-all duration-300
-        hover:bg-purple-800/70 hover:scale-110
-        disabled:opacity-60 disabled:cursor-wait
-        ${ringClass[state]}
-      `}
-      title={
-        state === "idle"
-          ? "Click to record"
-          : state === "recording"
-            ? "Click to stop"
-            : state === "processing"
-              ? "Processing…"
-              : "Click to stop playback"
-      }
-    >
-      {icon(state)}
-    </button>
+    <>
+      {/* Fullscreen tap-to-start overlay — required for mobile audio autoplay */}
+      {!started && (
+        <button
+          onClick={startSession}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-sm text-white"
+        >
+          <span className="text-5xl">🦁</span>
+          <span className="text-xl font-semibold tracking-wide">Tocá para empezar</span>
+        </button>
+      )}
+
+      <button
+        onClick={handleClick}
+        disabled={!started || state === "processing"}
+        className={`
+          fixed bottom-8 left-1/2 -translate-x-1/2 z-50
+          w-16 h-16 rounded-full
+          bg-purple-900/60 backdrop-blur-md
+          border border-purple-500/30
+          text-white
+          flex items-center justify-center
+          transition-all duration-300
+          hover:bg-purple-800/70 hover:scale-110
+          disabled:opacity-60 disabled:cursor-wait
+          ${ringClass[state]}
+        `}
+        title={
+          state === "idle"
+            ? "Click to record"
+            : state === "recording"
+              ? "Click to stop"
+              : state === "processing"
+                ? "Processing…"
+                : "Click to stop playback"
+        }
+      >
+        {icon(state)}
+      </button>
+    </>
   );
 }
